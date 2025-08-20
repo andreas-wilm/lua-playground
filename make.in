@@ -1,0 +1,44 @@
+workflow{
+	targets = {"joined_calls.vcf.gz"}
+}
+rule({
+	name = "bwa map",
+	input = {
+		reffa = config.ref_fa,
+		fastq = "fastq/{sample}.fastq.gz"
+	},
+	output = {
+		"bam/{sample}.bam",
+	},
+	shell = [[
+		touch {output[1]}
+	]],
+})
+
+rule{
+	name = "samtools index",
+	input = {
+		"bam/{sample}.bam",
+	},
+	output = {
+		"bam/{sample}.bam.bai"
+	},
+	script = [[
+		local f1, err1 = io.open(output[1], "a")
+	]],
+}
+
+rule{
+	name = "joined variant calling",
+	input = {
+		bams = expand{"bam/%s.bam", config.samples},
+		bais = expand{"bam/%s.bam.bai", config.samples},
+	},
+	output = {
+		"all.vcf",
+	},
+	shell = [[
+		touch all.vcf
+	]]
+}
+
