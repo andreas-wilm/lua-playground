@@ -1,6 +1,35 @@
 local love = require("love") -- shut up LSP
 local argparse = require("lib/argparse/argparse")
 
+local CAMERA = {
+	x = 0,
+	y = 0,
+	zoom = 1,
+}
+
+local PANNING = {
+	active = false,
+	last_mouse_x = 0,
+	last_mouse_y = 0,
+}
+
+-- color-bind palette from IBM design
+local COLORS = {
+	{ 1.00, 0.69, 0.00 },
+	{ 1.00, 0.38, 0.00 },
+	{ 0.86, 0.15, 0.50 },
+	{ 0.47, 0.37, 0.94 },
+	{ 0.39, 0.56, 1.00 },
+}
+
+local DELAY = 0
+local EVOLVE_EVERY = 0.05
+local CELL_SIZE = 10
+local DEBUG = false
+local CELLS = {}
+local GENERATION = 0
+local POP_DENSITY = 0.2
+
 function love.load(args)
 	print("FIXME fix wrong cell selection after zoom")
 	print("FIXME implement mouse dragging of canvas")
@@ -10,14 +39,15 @@ function love.load(args)
 
 	local parser = argparse("gol", "Game of live")
 	parser:flag("-d --debug", "turn on debugging")
-	parser:option("-f --freq", "frequency [s]", 0.05):convert(tonumber)
-	parser:option("-s --cellsize", "cell size", 10):convert(tonumber)
+	parser:option("-f --freq", "frequency [s]", EVOLVE_EVERY):convert(tonumber)
+	parser:option("-s --cellsize", "cell size", CELL_SIZE):convert(tonumber)
+	parser:option("-p --density", "start population density", POP_DENSITY):convert(tonumber)
 	local pargs = parser:parse(args)
 
-	DELAY = 0
 	EVOLVE_EVERY = pargs.freq
 	CELL_SIZE = pargs.cellsize
 	DEBUG = pargs.debug
+	POP_DENSITY = pargs.density
 
 	WIN_WIDTH = love.graphics.getWidth()
 	WIN_HEIGHT = love.graphics.getHeight()
@@ -29,30 +59,26 @@ function love.load(args)
 	print("CANVAS_WIDTH", CANVAS_WIDTH)
 	print("CANVAS_HEIGHT", CANVAS_HEIGHT)
 
-	-- color-bind palette from IBM design
-	COLORS = {
-		{ 1.00, 0.69, 0.00 },
-		{ 1.00, 0.38, 0.00 },
-		{ 0.86, 0.15, 0.50 },
-		{ 0.47, 0.37, 0.94 },
-		{ 0.39, 0.56, 1.00 },
-	}
-
 	NROWS, row_padding = math.modf(CANVAS_HEIGHT / CELL_SIZE)
 	NCOLS, col_padding = math.modf(CANVAS_WIDTH / CELL_SIZE)
 	print("NROWS", NROWS)
 	print("NCOLS", NCOLS)
 	-- FIXME pad rows and cols and make padding local
 
-	GENERATION = 0
-	CELLS = {}
-	local pop_rate = 0.25
+	CAMERA.x = math.floor(WIN_WIDTH / 2) -- FIXME unused
+	CAMERA.y = math.floor(WIN_HEIGHT / 2) -- FIXME unused
+	CAMERA.zoom = 1
+
+	populate()
+end
+
+function populate()
 	math.randomseed(os.time())
 	for i = 1, NROWS do
 		CELLS[i] = {}
 		for j = 1, NCOLS do
 			local state = 0
-			if math.random() < pop_rate then
+			if math.random() < POP_DENSITY then
 				state = math.random(#COLORS)
 			end
 			CELLS[i][j] = state
@@ -61,13 +87,6 @@ function love.load(args)
 	if DEBUG then
 		print_cells()
 	end
-
-	CAMERA = { -- FIXME
-		x = math.floor(WIN_WIDTH / 2), -- FIXME unused
-		y = math.floor(WIN_HEIGHT / 2), -- FIXME unused
-		zoom = 1,
-		pan_speed = 100,
-	}
 end
 
 function love.update(dt)
