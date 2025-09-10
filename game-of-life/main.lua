@@ -4,13 +4,14 @@ local argparse = require("lib/argparse/argparse")
 local CAMERA = {
 	x = 0,
 	y = 0,
-	zoom = 1,
+	zoom = 1.0,
 }
 
 local PANNING = {
 	active = false,
-	last_mouse_x = 0,
-	last_mouse_y = 0,
+	speed = 0.75,
+	last_mouse_x = nil,
+	last_mouse_y = nil,
 }
 
 -- color-bind palette from IBM design
@@ -22,6 +23,7 @@ local COLORS = {
 	{ 0.39, 0.56, 1.00 },
 }
 
+local ZOOM_SPEED = 0.1
 local DELAY = 0
 local EVOLVE_EVERY = 0.05
 local CELL_SIZE = 10
@@ -31,11 +33,10 @@ local GENERATION = 0
 local POP_DENSITY = 0.2
 
 function love.load(args)
-	print("FIXME fix wrong cell selection after zoom")
-	print("FIXME implement mouse dragging of canvas")
-	print("FIXME implement start, pause, time x")
+	print("FIXME fix border glitches with padding")
 	print("FIXME implement display of generations, time and number of cells")
-	print("FIXME consider implementing cell class")
+	print("FIXME fix wrong cell selection after zoom")
+	print("FIXME implement start, pause, time x")
 
 	local parser = argparse("gol", "Game of live")
 	parser:flag("-d --debug", "turn on debugging")
@@ -51,49 +52,34 @@ function love.load(args)
 
 	WIN_WIDTH = love.graphics.getWidth()
 	WIN_HEIGHT = love.graphics.getHeight()
-	print("WIN_WIDTH", WIN_WIDTH)
-	print("WIN_HEIGHT", WIN_HEIGHT)
 
-	CANVAS_WIDTH = WIN_WIDTH * 2
-	CANVAS_HEIGHT = WIN_HEIGHT
-	print("CANVAS_WIDTH", CANVAS_WIDTH)
-	print("CANVAS_HEIGHT", CANVAS_HEIGHT)
+	CANVAS_WIDTH = WIN_WIDTH * 3
+	CANVAS_HEIGHT = WIN_HEIGHT * 3
 
 	NROWS, row_padding = math.modf(CANVAS_HEIGHT / CELL_SIZE)
 	NCOLS, col_padding = math.modf(CANVAS_WIDTH / CELL_SIZE)
-	print("NROWS", NROWS)
-	print("NCOLS", NCOLS)
 	-- FIXME pad rows and cols and make padding local
 
-	CAMERA.x = math.floor(WIN_WIDTH / 2) -- FIXME unused
-	CAMERA.y = math.floor(WIN_HEIGHT / 2) -- FIXME unused
-	CAMERA.zoom = 1
+	CAMERA.x = (CANVAS_WIDTH - WIN_WIDTH) / 2
+	CAMERA.y = (CANVAS_HEIGHT - WIN_HEIGHT) / 2
 
 	populate()
 end
 
-function populate()
-	math.randomseed(os.time())
-	for i = 1, NROWS do
-		CELLS[i] = {}
-		for j = 1, NCOLS do
-			local state = 0
-			if math.random() < POP_DENSITY then
-				state = math.random(#COLORS)
-			end
-			CELLS[i][j] = state
-		end
-	end
-	if DEBUG then
-		print_cells()
-	end
-end
-
 function love.update(dt)
+	if PANNING.active then
+		local x, y = love.mouse.getPosition()
+		local dx, dy = x - PANNING.last_mouse_x, y - PANNING.last_mouse_y
+		local world_dx = dx / (CAMERA.zoom * PANNING.speed)
+		local world_dy = dy / (CAMERA.zoom * PANNING.speed)
+		CAMERA.x = CAMERA.x - world_dx
+		CAMERA.y = CAMERA.y - world_dy
+		PANNING.last_mouse_x, PANNING.last_mouse_y = x, y
+	end
+
 	DELAY = DELAY + dt -- dt is in seconds
 	if DELAY > EVOLVE_EVERY then
 		evolve()
-		print("Generation", GENERATION)
 		DELAY = 0
 	end
 end
@@ -102,7 +88,7 @@ function love.draw()
 	love.graphics.push()
 	love.graphics.translate(WIN_WIDTH / 2, WIN_HEIGHT / 2)
 	love.graphics.scale(CAMERA.zoom, CAMERA.zoom)
-	love.graphics.translate(-WIN_WIDTH / 2, -WIN_HEIGHT / 2)
+	love.graphics.translate(-WIN_WIDTH / 2 - CAMERA.x, -WIN_HEIGHT / 2 - CAMERA.y)
 
 	-- love.graphics.translate(-player.x + 400, -player.y + 300)
 	for r, row in ipairs(CELLS) do
@@ -122,33 +108,32 @@ function love.draw()
 			end
 		end
 	end
+
+	love.graphics.setLineWidth(2)
+	love.graphics.setColor(1, 1, 1)
+	love.graphics.rectangle("line", 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 	-- FIXME score, generations, time etc.
 	love.graphics.pop()
 	-- love.graphics.print(generations, 10, 10)
 end
 
 function love.keypressed(key)
-	-- FIXME arrows move camera
 	if key == "q" then
 		love.event.quit()
 	end
 end
 
 function love.wheelmoved(x, y)
-	local zoomSpeed = 0.1 -- Adjust this value for faster/slower zooming
-	if y > 0 then -- Scrolled up (zoom in)
-		CAMERA.zoom = CAMERA.zoom + zoomSpeed
-	elseif y < 0 then -- Scrolled down (zoom out)
-		CAMERA.zoom = CAMERA.zoom - zoomSpeed
-		if CAMERA.zoom < 0.1 then -- Prevent zooming too far out
-			CAMERA.zoom = 0.1
-		end
+	if y > 0 then -- scrolled up (zoom in)
+		CAMERA.zoom = CAMERA.zoom + ZOOM_SPEED
+	elseif y < 0 then -- scrolled down (zoom out)
+		CAMERA.zoom = CAMERA.zoom - ZOOM_SPEED
 	end
 end
 
 function love.mousepressed(x, y, button, istouch, presses)
-	print("FIXME doesn't account for translation")
 	if button == 2 then
+		print("FIXME doesn't account for translation. compute correct world coords")
 		local c = math.floor(x / CELL_SIZE)
 		local r = math.floor(y / CELL_SIZE)
 		print("pressed on cell", r, c, "which has", #list_neighbours(r, c), "neighbours")
@@ -157,10 +142,32 @@ function love.mousepressed(x, y, button, istouch, presses)
 		else
 			CELLS[r][c] = 0
 		end
-		-- print_cells()
-		-- print()
 	elseif button == 1 then
-		print("FIXME implement panning")
+		PANNING.active = true
+		PANNING.last_mouse_x, PANNING.last_mouse_y = x, y
+	end
+end
+
+function love.mousereleased(x, y, button)
+	if button == 1 then
+		PANNING.active = false
+	end
+end
+
+function populate()
+	math.randomseed(os.time())
+	for i = 1, NROWS do
+		CELLS[i] = {}
+		for j = 1, NCOLS do
+			local state = 0
+			if math.random() < POP_DENSITY then
+				state = math.random(#COLORS)
+			end
+			CELLS[i][j] = state
+		end
+	end
+	if DEBUG then
+		print_cells()
 	end
 end
 
@@ -209,21 +216,22 @@ function evolve()
 	for i, row in ipairs(CELLS) do
 		for j, _col in ipairs(row) do
 			local neighbours = list_neighbours(i, j)
-			-- FIXME get consensus color
 			if CELLS[i][j] ~= 0 then -- alive
 				if #neighbours < 2 or #neighbours > 3 then
 					NEW_CELLS[i][j] = 0
 				end
 			elseif #neighbours == 3 then
-				-- FIXME majority color from neighbours
 				local state = color_consensus(neighbours)
 				NEW_CELLS[i][j] = state
-				-- print("now alive", i, j)
 			end
 		end
 	end
 	CELLS = copy(NEW_CELLS)
 	GENERATION = GENERATION + 1
+
+	if GENERATION % 100 == 0 then
+		print("Generation", GENERATION)
+	end
 end
 
 function print_cells()
