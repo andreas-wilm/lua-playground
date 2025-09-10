@@ -15,10 +15,6 @@ Just for learning Lua. For the real stuff, check out hashlife implementations an
 - Support for setting time
 - Cell aging: Use a color gradient to represent the age of cells, with older cells having a different color or texture.
 
-```lua
-cells[][] = color -- >0 alive
-age[][] = int -- generation; -1 for time since death
-```
 
 
 

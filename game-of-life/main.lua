@@ -1,17 +1,23 @@
-love = require("love") -- shut up LSP
+local love = require("love") -- shut up LSP
+local argparse = require("lib/argparse/argparse")
 
-function love.load()
-	DELAY = 0
-	EVOLVE_EVERY = 0.05 -- in secs
-	CELL_SIZE = 10
-	DEBUG = false
-
-	print("FIXME color consensus")
+function love.load(args)
 	print("FIXME fix wrong cell selection after zoom")
-	print("FIXME implement movement in canvas")
 	print("FIXME implement mouse dragging of canvas")
-	print("FIXME implement change of time")
+	print("FIXME implement start, pause, time x")
 	print("FIXME implement display of generations, time and number of cells")
+	print("FIXME consider implementing cell class")
+
+	local parser = argparse("gol", "Game of live")
+	parser:flag("-d --debug", "turn on debugging")
+	parser:option("-f --freq", "frequency [s]", 0.05):convert(tonumber)
+	parser:option("-s --cellsize", "cell size", 10):convert(tonumber)
+	local pargs = parser:parse(args)
+
+	DELAY = 0
+	EVOLVE_EVERY = pargs.freq
+	CELL_SIZE = pargs.cellsize
+	DEBUG = pargs.debug
 
 	WIN_WIDTH = love.graphics.getWidth()
 	WIN_HEIGHT = love.graphics.getHeight()
@@ -38,8 +44,10 @@ function love.load()
 	print("NCOLS", NCOLS)
 	-- FIXME pad rows and cols and make padding local
 
-	local pop_rate = 0.25
+	GENERATION = 0
 	CELLS = {}
+	local pop_rate = 0.25
+	math.randomseed(os.time())
 	for i = 1, NROWS do
 		CELLS[i] = {}
 		for j = 1, NCOLS do
@@ -50,21 +58,23 @@ function love.load()
 			CELLS[i][j] = state
 		end
 	end
-	print_cells()
-	CELLS_ORIG = copy(CELLS)
+	if DEBUG then
+		print_cells()
+	end
 
 	CAMERA = { -- FIXME
 		x = math.floor(WIN_WIDTH / 2), -- FIXME unused
 		y = math.floor(WIN_HEIGHT / 2), -- FIXME unused
 		zoom = 1,
+		pan_speed = 100,
 	}
 end
 
 function love.update(dt)
 	DELAY = DELAY + dt -- dt is in seconds
 	if DELAY > EVOLVE_EVERY then
-		print("Evolving...")
 		evolve()
+		print("Generation", GENERATION)
 		DELAY = 0
 	end
 end
@@ -119,7 +129,7 @@ end
 
 function love.mousepressed(x, y, button, istouch, presses)
 	print("FIXME doesn't account for translation")
-	if button == 1 then
+	if button == 2 then
 		local c = math.floor(x / CELL_SIZE)
 		local r = math.floor(y / CELL_SIZE)
 		print("pressed on cell", r, c, "which has", #list_neighbours(r, c), "neighbours")
@@ -130,6 +140,8 @@ function love.mousepressed(x, y, button, istouch, presses)
 		end
 		-- print_cells()
 		-- print()
+	elseif button == 1 then
+		print("FIXME implement panning")
 	end
 end
 
@@ -152,6 +164,21 @@ function list_neighbours(r, c)
 	return neighbours
 end
 
+function color_consensus(neighbours)
+	local freq = {}
+	local max_count = 0
+	local max_col = 0
+	for _, col in pairs(neighbours) do
+		freq[col] = (freq[col] or 0) + 1
+		if freq[col] > max_count then
+			max_count = freq[col]
+			max_col = col
+		end
+	end
+	-- returning first/random color on tie
+	return max_col
+end
+
 function evolve()
 	--[[ https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
             Any live cell with fewer than two live neighbours dies, as if by underpopulation.
@@ -170,13 +197,14 @@ function evolve()
 				end
 			elseif #neighbours == 3 then
 				-- FIXME majority color from neighbours
-				local state = math.random(#COLORS)
+				local state = color_consensus(neighbours)
 				NEW_CELLS[i][j] = state
 				-- print("now alive", i, j)
 			end
 		end
 	end
 	CELLS = copy(NEW_CELLS)
+	GENERATION = GENERATION + 1
 end
 
 function print_cells()
