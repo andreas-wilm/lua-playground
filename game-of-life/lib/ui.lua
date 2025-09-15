@@ -1,4 +1,4 @@
--- ui.lua
+-- Poor man's UI. Created with an LLM
 local UI = {}
 UI.__index = UI
 

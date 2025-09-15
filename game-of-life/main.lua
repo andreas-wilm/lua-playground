@@ -2,7 +2,7 @@
 
 local love = require("love") -- shut up LSP
 local argparse = require("lib/argparse/argparse")
-local uilib = require("ui")
+local uilib = require("lib/ui")
 
 if true then
 	package.path = package.path
@@ -10,13 +10,11 @@ if true then
 	local _ENV = require("std.strict")(_G)
 end
 
-print("FIXME Fix frequency steps")
 print("FIXME support reading of patterns")
 print("FIXME optimization: update neighbours on the fly")
 -- won't fix, but add to doc
-print("FIXME implement max zoom")
-print("FIXME border overwrites cells")
-print("FIXME for some canvas size and cell size combinations we need border")
+print("WONTFIX center on mouse when zooming")
+print("WONTFIX implement max zoom")
 
 print([[- Press 'q' to exit
 - Pan with left mouse button
@@ -29,6 +27,9 @@ local CAMERA = {
 	y = 0,
 	zoom = 1.0,
 }
+
+local EVO_FREQ_VALS = { 1000000, 5, 1, 0.5, 0.1, 0.05, 0.01, 0.001, 0.000001 }
+local EVO_FREQ = 0.1
 
 local PANNING = {
 	active = false,
@@ -50,7 +51,6 @@ local GENERATION = 0
 local CELL_SIZE = 10
 local POP_DENSITY = 0.2
 local CELLS = {} -- 2D array of cells. 0=dead, other values are colors
-local EVOLVE_EVERY = 0.05
 local DEBUG = false
 local WIN_WIDTH
 local WIN_HEIGHT
@@ -185,7 +185,7 @@ local function add_ui()
 	local y = ui_y
 	UI:addButton("<<", x, y, button_w, button_h)
 	x = x + button_w
-	UI:addButton(EVOLVE_EVERY .. " [s]", x, y, button_w, button_h)
+	UI:addButton(EVO_FREQ .. " [s]", x, y, button_w, button_h)
 	x = x + button_w
 	UI:addButton(">>", x, y, button_w, button_h)
 end
@@ -193,12 +193,10 @@ end
 function love.load(args)
 	local parser = argparse("gol", "Game of live")
 	parser:flag("-d --debug", "turn on debugging")
-	parser:option("-f --freq", "frequency [s]", EVOLVE_EVERY):convert(tonumber)
 	parser:option("-s --cellsize", "cell size", CELL_SIZE):convert(tonumber)
 	parser:option("-p --density", "start population density", POP_DENSITY):convert(tonumber)
 	local pargs = parser:parse(args)
 
-	EVOLVE_EVERY = pargs.freq
 	CELL_SIZE = pargs.cellsize
 	DEBUG = pargs.debug
 	POP_DENSITY = pargs.density
@@ -233,7 +231,7 @@ function love.update(dt) -- dt is in seconds
 	end
 
 	DELAY = DELAY + dt
-	if DELAY > EVOLVE_EVERY then
+	if DELAY > EVO_FREQ then
 		evolve()
 		DELAY = 0
 	end
@@ -302,14 +300,24 @@ function love.mousepressed(x, y, button, istouch, presses)
 		for _, ui_button in ipairs(UI.buttons) do
 			if x > ui_button.x and x < ui_button.x + ui_button.width then
 				if y > ui_button.y and y < ui_button.y + ui_button.height then
-					-- brittle hack to go via text
+					-- brittle hack: better to assign metadata to button
 					if ui_button.text == "<<" then
-						EVOLVE_EVERY = EVOLVE_EVERY / 2
+						for i, f in pairs(EVO_FREQ_VALS) do
+							if f == EVO_FREQ and i > 1 then
+								EVO_FREQ = EVO_FREQ_VALS[i - 1]
+								break
+							end
+						end
 					else
-						EVOLVE_EVERY = EVOLVE_EVERY * 2
+						for i, f in pairs(EVO_FREQ_VALS) do
+							if f == EVO_FREQ and i < #EVO_FREQ_VALS then
+								EVO_FREQ = EVO_FREQ_VALS[i + 1]
+								break
+							end
+						end
 					end
 					-- here is the alternative but also as a hack here
-					UI.buttons[2].text = EVOLVE_EVERY .. " [s]"
+					UI.buttons[2].text = EVO_FREQ .. " [s]"
 				end
 			end
 		end
